@@ -23,7 +23,7 @@ extern "C" {
 #define __CXX_INSTANCE_HELD_OBJECTS   "__CXX_INSTANCE_HELD_OBJECTS"
 #define __CXX_INSTANCE_ATTRIB         "__CXX_INSTANCE_ATTRIB"
 #define __CXX_OBJECT_LOOKUP           "__CXX_OBJECT_LOOKUP"
-#define __LDEBUG 1
+#define __LDEBUG 0
 
 // ---------------------------------------------------------------------------
 #define STACKDUMP {                                                     \

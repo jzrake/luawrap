@@ -23,6 +23,26 @@ protected:
   int _call();
 private:
   virtual std::vector<double> call_priv(double *x, int narg);
+  virtual LuaInstanceMethod __getattr__(std::string &method_name)
+  {
+    AttributeMap attr;
+    attr["get_function"] = _get_function_;
+    attr["set_function"] = _set_function_;
+    RETURN_ATTR_OR_CALL_SUPER(LuaCppObject);
+  }
+  static int _get_function_(lua_State *L)
+  {
+    LuaFunction *self = checkarg<LuaFunction>(L, 1);
+    self->retrieve("lua_callback");
+    return 1;
+  }
+  static int _set_function_(lua_State *L)
+  {
+    LuaFunction *self = checkarg<LuaFunction>(L, 1);
+    luaL_checktype(L, 2, LUA_TFUNCTION);
+    self->hold(2, "lua_callback");
+    return 0;
+  }
 } ;
 
 CallbackFunction *CallbackFunction::create_from_stack(lua_State *L, int pos)
@@ -32,6 +52,7 @@ CallbackFunction *CallbackFunction::create_from_stack(lua_State *L, int pos)
   }
   else {
     LuaFunction *f = create<LuaFunction>(L);
+    luaL_checktype(L, 2, LUA_TFUNCTION);
     f->hold(2, "lua_callback");
     return f;
   }
@@ -383,6 +404,8 @@ protected:
     AttributeMap attr;
     attr["conj"] = _conj_;
     attr["norm"] = _norm_;
+    attr["get_re"] = _get_re_;
+    attr["get_im"] = _get_im_;
     RETURN_ATTR_OR_CALL_SUPER(LuaCppObject);
   }
   static int _conj_(lua_State *L) {
@@ -398,6 +421,16 @@ protected:
     ret->z = norm(self->z);
     self->retrieve(ret);
     return 0;
+  }
+  static int _get_re_(lua_State *L) {
+    LuaComplexDouble *self = checkarg<LuaComplexDouble>(L, 1);
+    lua_pushnumber(L, self->z.real());
+    return 1;
+  }
+  static int _get_im_(lua_State *L) {
+    LuaComplexDouble *self = checkarg<LuaComplexDouble>(L, 1);
+    lua_pushnumber(L, self->z.imag());
+    return 1;
   }
 } ;
 
