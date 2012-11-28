@@ -128,6 +128,17 @@ local function test_complex()
    print(tests.j + 2)
 end
 
+local function test_lua_function()
+   local f = tests.LuaFunction()
+   local fcxx = getmetatable(f).__CXX_INSTANCE_HELD_OBJECTS
+   fcxx.lua_callback = function(x,y) return x,y,x*y end
+   local res1, res2, res3 = f(2,3)
+   print(res1, res2, res3)
+   assert(res1 == 2)
+   assert(res2 == 3)
+   assert(res3 == 6)
+end
+
 test_complex()
 test_add_method()
 test_callback()
@@ -135,5 +146,5 @@ test_hold_drop()
 test_casting()
 test_method_calls()
 test_gc()
-
+test_lua_function()
 --for k,v in pairs(debug.getregistry()) do print(k,v) end

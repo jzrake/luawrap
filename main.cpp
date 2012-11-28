@@ -19,6 +19,8 @@ private:
 
 class LuaFunction : public CallbackFunction
 {
+protected:
+  int _call();
 private:
   virtual std::vector<double> call_priv(double *x, int narg);
 } ;
@@ -311,13 +313,30 @@ std::vector<double> LuaFunction::call_priv(double *x, int narg)
   if (lua_pcall(L, narg, LUA_MULTRET, 0) != 0) {
     luaL_error(L, lua_tostring(L, -1));
   }
-  int nret = lua_gettop(L) - 2;
+  int nret = lua_gettop(L);
   for (int i=0; i<nret; ++i) {
     res.push_back(lua_tonumber(L, -1));
     lua_pop(L, 1);
   }
   reverse(res.begin(), res.end());
   return res;
+}
+
+int LuaFunction::_call()
+{
+  lua_State *L = __lua_state;
+  int narg = lua_gettop(L);
+  std::vector<double> arg;
+  for (int i=0; i<narg; ++i) {
+    arg.push_back(lua_tonumber(L, -1));
+    lua_pop(L, 1);
+  }
+  reverse(arg.begin(), arg.end());
+  std::vector<double> res = this->call_priv(&arg[0], narg);
+  for (unsigned int i=0; i<res.size(); ++i) {
+    lua_pushnumber(L, res[i]);
+  }
+  return res.size();
 }
 
 #include <complex>
@@ -396,6 +415,7 @@ int main()
   LuaCppObject::Register<Poodle>(L);
   LuaCppObject::Register<PetOwner>(L);
   LuaCppObject::Register<CppFunction>(L);
+  LuaCppObject::Register<LuaFunction>(L);
 
   LuaComplexDouble *J = LuaCppObject::create<LuaComplexDouble>(L);
   J->z = std::complex<double>(0,1);
