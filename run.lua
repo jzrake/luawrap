@@ -128,3 +128,8 @@ test_lua_function()
 --test_gc()
 
 --for k,v in pairs(debug.getregistry()) do print(k,v) end
+
+for i=0,#arg do
+   print(i, arg[i])
+end
+

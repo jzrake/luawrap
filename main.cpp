@@ -434,29 +434,41 @@ protected:
   }
 } ;
 
-int main()
+int main(int argc, char **argv)
 {
   lua_State *L = luaL_newstate();
   luaL_openlibs(L);
-
   LuaCppObject::Init(L);
 
-  lua_newtable(L);
 
+  // Create the `tests` module
+  // ---------------------------------------------------------------------------
+  lua_newtable(L);
   LuaCppObject::Register<Cat>(L);
   LuaCppObject::Register<Dog>(L);
   LuaCppObject::Register<Poodle>(L);
   LuaCppObject::Register<PetOwner>(L);
   LuaCppObject::Register<ExampleCppFunction>(L);
   LuaCppObject::Register<LuaFunction>(L);
-
   LuaComplexDouble *J = LuaCppObject::create<LuaComplexDouble>(L);
-  J->z = std::complex<double>(0,1);
+  J->z = std::complex<double>(0, 1);
   LuaCppObject::retrieve(L, J);
   lua_setfield(L, -2, "j");
-
   lua_setglobal(L, "tests");
 
+
+  // Create the global `arg` table
+  // ---------------------------------------------------------------------------
+  lua_newtable(L);
+  for (int n=0; n<argc; ++n) {
+    lua_pushstring(L, argv[n]);
+    lua_rawseti(L, -2, n);
+  }
+  lua_setglobal(L, "arg");
+
+
+  // Run the script
+  // ---------------------------------------------------------------------------
   if (luaL_dofile(L, "run.lua")) {
     printf("%s\n", lua_tostring(L, -1));
   }
