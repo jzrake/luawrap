@@ -1,5 +1,5 @@
 
-LUA_HOME = $(HOME)/Work/luview/dep
+LUA_HOME = $(PWD)/lua-5.2.1
 
 CFLAGS = -Wall
 
