@@ -332,14 +332,14 @@ protected:
     LuaComplexDouble *a, *b;
 
     if (lua_isnumber(L, 1)) {
-      a = create<LuaComplexDouble>(L);
+      hold(a = create<LuaComplexDouble>(L));
       a->z = lua_tonumber(L, 1);
     }
     else {
       a = checkarg<LuaComplexDouble>(L, 1);
     }
     if (lua_isnumber(L, 2)) {
-      b = create<LuaComplexDouble>(L);
+      hold(b = create<LuaComplexDouble>(L));
       b->z = lua_tonumber(L, 2);
     }
     else {
@@ -349,7 +349,8 @@ protected:
     LuaComplexDouble *ret = create<LuaComplexDouble>(L);
     ret->z = a->z + b->z;
     retrieve(L, ret);
-
+    drop(a);
+    drop(b);
     return 1;
   }
   virtual std::string __tostring()
