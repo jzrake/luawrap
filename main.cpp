@@ -58,12 +58,12 @@ CallbackFunction *CallbackFunction::create_from_stack(lua_State *L, int pos)
   }
 }
 
-class CppFunction : public CallbackFunction
+class ExampleCppFunction : public CallbackFunction
 {
 private:
   virtual std::vector<double> call_priv(double *x, int narg)
   {
-    printf("calling the CppFunction!\n");
+    printf("calling the ExampleCppFunction!\n");
     return std::vector<double>();
   }
 } ;
@@ -447,7 +447,7 @@ int main()
   LuaCppObject::Register<Dog>(L);
   LuaCppObject::Register<Poodle>(L);
   LuaCppObject::Register<PetOwner>(L);
-  LuaCppObject::Register<CppFunction>(L);
+  LuaCppObject::Register<ExampleCppFunction>(L);
   LuaCppObject::Register<LuaFunction>(L);
 
   LuaComplexDouble *J = LuaCppObject::create<LuaComplexDouble>(L);

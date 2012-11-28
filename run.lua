@@ -86,7 +86,7 @@ local function test_callback()
    sadie:play()
    sadie:teach_play(function() print("chasing rabbit!") end)
    sadie:play()
-   local cpp_func = tests.CppFunction()
+   local cpp_func = tests.ExampleCppFunction()
    sadie:teach_play(cpp_func)
    cpp_func = nil
    collectgarbage()
