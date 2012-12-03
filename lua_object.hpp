@@ -1,12 +1,13 @@
 
-
 #ifndef __LuaCppObject_Hpp__
 #define __LuaCppObject_Hpp__
+
 
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <map>
+#include "lua.hpp"
 
 #ifdef __GNUC__
 #include <cstdlib>
@@ -14,16 +15,11 @@
 #endif // __GNUC__
 
 
-extern "C" {
-#include "lua.h"
-#include "lualib.h"
-#include "lauxlib.h"
-}
-
 #define __CXX_INSTANCE_HELD_OBJECTS   "__CXX_INSTANCE_HELD_OBJECTS"
 #define __CXX_INSTANCE_ATTRIB         "__CXX_INSTANCE_ATTRIB"
 #define __CXX_OBJECT_LOOKUP           "__CXX_OBJECT_LOOKUP"
 #define __LDEBUG 0
+
 
 // ---------------------------------------------------------------------------
 #define STACKDUMP {                                                     \

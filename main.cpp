@@ -3,6 +3,54 @@
 #include <vector>
 #include "lua_object.hpp"
 
+class LuaVector : public LuaCppObject
+/*
+ * Implements some of the std::vector functionality. Removing an element
+ * requires a little care, since it should only be dropped if we do not hold
+ * another copy of it.
+ */
+{
+private:
+  std::vector<LuaCppObject*> vec;
+  virtual LuaInstanceMethod __getattr__(std::string &method_name)
+  {
+    AttributeMap attr;
+    attr["push_back"] = _push_back_;
+    attr["pop_back"] = _pop_back_;
+    attr["size"] = _size_;
+    RETURN_ATTR_OR_CALL_SUPER(LuaCppObject);
+  }
+  static int _push_back_(lua_State *L)
+  {
+    LuaVector *self = checkarg<LuaVector>(L, 1);
+    LuaCppObject *obj = checkarg<LuaCppObject>(L, 2);
+    self->vec.push_back(obj);
+    self->hold(obj);
+    return 0;
+  }
+  static int _pop_back_(lua_State *L)
+  {
+    LuaVector *self = checkarg<LuaVector>(L, 1);
+    LuaCppObject *back = self->vec.back();
+    if (self->vec.empty()) return 0;
+    self->vec.pop_back();
+    /*
+     * Drop our reference to this thing only if there are no other copies of it
+     * in the vector.
+     */
+    if (find(self->vec.begin(), self->vec.end(), back) == self->vec.end()) {
+      printf("only one, dropping it!\n");
+      self->drop(back);
+    }
+    return 0;
+  }
+  static int _size_(lua_State *L)
+  {
+    LuaVector *self = checkarg<LuaVector>(L, 1);
+    lua_pushnumber(L, self->vec.size());
+    return 1;
+  }
+} ;
 
 class CallbackFunction : public LuaCppObject
 {
@@ -450,6 +498,7 @@ int main(int argc, char **argv)
   LuaCppObject::Register<PetOwner>(L);
   LuaCppObject::Register<ExampleCppFunction>(L);
   LuaCppObject::Register<LuaFunction>(L);
+  LuaCppObject::Register<LuaVector>(L);
   LuaComplexDouble *J = LuaCppObject::create<LuaComplexDouble>(L);
   J->z = std::complex<double>(0, 1);
   LuaCppObject::retrieve(L, J);

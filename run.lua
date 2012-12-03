@@ -117,19 +117,38 @@ local function test_lua_function()
    assert(res3 == 6)
 end
 
+local function test_vector()
+   local vec = tests.LuaVector()
+   local dog = tests.Dog()
+   local cat = tests.Cat()
+   local me = tests.PetOwner()
+   vec:push_back(me)
+   vec:push_back(dog)
+   vec:push_back(cat)
+   vec:push_back(cat)
+   vec:push_back(cat)
+   vec:pop_back()
+   vec:pop_back()
+   for k,v in pairs(getmetatable(vec).__CXX_INSTANCE_HELD_OBJECTS) do
+      print (k,v)
+   end
+   print(vec:size())
+end
+
+local function test_args()
+   local function printf(...) print(string.format(...)) end
+   for i=0,#arg do
+      printf("arg[%d] = %s", i, arg[i])
+   end
+end
+
 test_complex()
 test_add_method()
 test_callback()
 test_casting()
 test_method_calls()
 test_lua_function()
+test_vector()
 
 --test_hold_drop()
 --test_gc()
-
---for k,v in pairs(debug.getregistry()) do print(k,v) end
-
-for i=0,#arg do
-   print(i, arg[i])
-end
-
