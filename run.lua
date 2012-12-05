@@ -132,7 +132,7 @@ local function test_vector()
    for k,v in pairs(getmetatable(vec).__CXX_INSTANCE_HELD_OBJECTS) do
       print (k,v)
    end
-   print(vec:size())
+   assert(vec:size() == 3)
 end
 
 local function test_args()
