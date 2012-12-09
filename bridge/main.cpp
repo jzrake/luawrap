@@ -2,6 +2,7 @@
 #include <iostream>
 #include "lua.hpp"
 
+
 #ifdef __GNUC__
 #include <cstdlib>
 #include <cxxabi.h>
@@ -23,11 +24,12 @@ std::string demangle(const char *mname)
 
 #define LuaObject_REGISTRY   "__LuaObject_REGISTRY"
 #define LuaObject_METATABLE  "__LuaObject_METATABLE"
+#define LuaObject_NONE       "__LuaObject_NONE"
 
 
 /*
  *
- *   LuaObject_REGISTRY = { [pure Lua object]: C++ LuaObject[fulluserdata] }
+ *   LuaObject_REGISTRY = { [pure Lua object]: C++ LuaObject[lightuserdata] }
  *
  * + has weak values
  * + used to check for an existing LuaObject associated to the pure Lua object
@@ -60,18 +62,22 @@ public:
     lua_pushcfunction(L, __gc);
     lua_setfield(L, -2, "__gc");
     lua_pop(L, 1); // stack now empty
+
+    lua_pushlightuserdata(L, NULL);
+    lua_setfield(L, LUA_REGISTRYINDEX, LuaObject_NONE);
   }
   LuaObject(lua_State *L, int pos) : L(L)
   {
     if (lua_type(L, pos) == LUA_TNIL) {
-      luaL_error(L, "NameError: no such object");
+      lua_pop(L, 1);
+      lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_NONE);
     }
 
     lua_pushvalue(L, pos);
     lua_rawsetp(L, LUA_REGISTRYINDEX, this);
     lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_REGISTRY);
     lua_rawgetp(L, LUA_REGISTRYINDEX, this); // Lua object is the key
-    *((LuaObject**) lua_newuserdata(L, sizeof(LuaObject*))) = this;
+    lua_pushlightuserdata(L, this);
     luaL_setmetatable(L, LuaObject_METATABLE); // does not change stack
 
     /*
@@ -106,7 +112,7 @@ public:
   template<class T> static T *New(lua_State *L, int pos);
   static int __gc(lua_State *L)
   {
-    LuaObject *self = *static_cast<LuaObject**>(lua_touserdata(L, -1));
+    LuaObject *self = static_cast<LuaObject*>(lua_touserdata(L, -1));
     delete self;
     return 0;
   }
@@ -179,9 +185,12 @@ public:
   }
   LuaObject &operator[](const double x)
   {
+    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
     lua_pushnumber(L, x);
-    const LuaNumber *key = New<LuaNumber>(L, -1);
-    return this->operator[](key);
+    lua_gettable(L, -2);
+    LuaObject *ret = New(L, -1);
+    lua_pop(L, 1);
+    return *ret;
   }
   LuaObject &operator[](const LuaObject *key)
   {
@@ -208,7 +217,7 @@ LuaObject *LuaObject::New(lua_State *L, int pos)
   lua_pop(L, 2); // remove LuaObject_REGISTRY and the result of gettable
 
   if (udata != NULL) {
-    return *static_cast<LuaObject**>(udata);
+    return static_cast<LuaObject*>(udata);
   }
   if (type == LUA_TFUNCTION) {
     return new LuaFunction(L, pos);
@@ -321,6 +330,15 @@ int setitem(lua_State *L)
   return 0;
 }
 
+int testtable(lua_State *L)
+{
+  LuaTable *table = LuaObject::New<LuaTable>(L, 1);
+  lua_newtable(L);
+  //  LuaTable &subtable = *LuaObject::New<LuaTable>(L, -1);
+  table->operator[](100);
+  return 0;
+}
+
 int main(int argc, char **argv)
 {
   int n;
@@ -336,6 +354,7 @@ int main(int argc, char **argv)
                        {"settable", settable},
                        {"getitem", getitem},
                        {"setitem", setitem},
+		       {"testtable", testtable},
                        {NULL, NULL}};
   lua_getglobal(L, "package");
   lua_getfield(L, -1, "loaded");

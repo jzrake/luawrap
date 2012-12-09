@@ -24,7 +24,9 @@ bridge.setitem(thetable, thenumber, thefunc)
 assert(thetable[thenumber] == thefunc)
 assert(bridge.getitem(thetable, thenumber) == thefunc)
 
---print(bridge.getitem(thetable, thenumber))
+--bridge.testtable(thetable)
+
 --for k,v in pairs(Registry) do print(k,v) end
+--for k,v in pairs(LuaObject) do print(k,v) end
 
 print "all test passed"
