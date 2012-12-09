@@ -290,70 +290,10 @@ template <class T> T *LuaObject::New(lua_State *L, int pos)
   return dynamic_cast<T*>(obj);
 }
 
-static LuaFunction *thefunc = NULL;
-static LuaNumber *thenumber = NULL;
-static LuaTable *thetable = NULL;
-
-
-int getfunc(lua_State *L)
-{
-  if (thefunc != NULL) {
-    thefunc->push();
-  }
-  else {
-    lua_pushnil(L);
-  }
-  return 1;
-}
-int setfunc(lua_State *L)
-{
-  thefunc = LuaObject::New<LuaFunction>(L, 1);
-  return 0;
-}
 int callfunc(lua_State *L)
 {
-  if (thefunc != NULL) {
-    return thefunc->call();
-  }
-  else {
-    return 0;
-  }
-}
-
-
-int getnumber(lua_State *L)
-{
-  double val;
-  if (thenumber != NULL) {
-    val = thenumber->get_value();
-  }
-  else {
-    val = 0.0;
-  }
-
-  lua_pushnumber(L, val);
-  return 1;
-}
-int setnumber(lua_State *L)
-{
-  thenumber = LuaObject::New<LuaNumber>(L, 1);
-  return 0;
-}
-
-int gettable(lua_State *L)
-{
-  if (thetable != NULL) {
-    thetable->push();
-  }
-  else {
-    lua_pushnil(L);
-  }
-  return 1;
-}
-int settable(lua_State *L)
-{
-  thetable = LuaObject::New<LuaTable>(L, 1);
-  return 0;
+  LuaFunction *func = LuaObject::New<LuaFunction>(L, 1);
+  return func->call();
 }
 
 int getitem(lua_State *L)
@@ -388,13 +328,7 @@ int main(int argc, char **argv)
   lua_State *L = luaL_newstate();
   luaL_openlibs(L);
   LuaObject::Init(L);
-  luaL_Reg bridge[] = {{"getfunc", getfunc},
-                       {"setfunc", setfunc},
-                       {"callfunc", callfunc},
-                       {"getnumber", getnumber},
-                       {"setnumber", setnumber},
-                       {"gettable", gettable},
-                       {"settable", settable},
+  luaL_Reg bridge[] = {{"callfunc", callfunc},
                        {"getitem", getitem},
                        {"setitem", setitem},
                        {"testtable", testtable},
