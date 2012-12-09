@@ -44,6 +44,8 @@ class LuaObject
 {
 protected:
   lua_State *L;
+private:
+  LuaObject(const LuaObject &other) { } // copy constructor is illegal
 public:
   static void Init(lua_State *L)
   {
@@ -62,7 +64,7 @@ public:
   LuaObject(lua_State *L, int pos) : L(L)
   {
     if (lua_type(L, pos) == LUA_TNIL) {
-      luaL_error(L, "TypeError: cannot wrap Lua type nil");
+      luaL_error(L, "NameError: no such object");
     }
 
     lua_pushvalue(L, pos);
@@ -88,6 +90,7 @@ public:
     lua_pushnil(L);
     lua_rawsetp(L, LUA_REGISTRYINDEX, this);
   }
+
   void push()
   {
     lua_rawgetp(L, LUA_REGISTRYINDEX, this);
@@ -111,6 +114,8 @@ public:
 
 class LuaFunction : public LuaObject
 {
+  LuaFunction(const LuaFunction &other) : LuaObject(NULL, 0) { }
+  LuaFunction &operator=(const LuaFunction &other) { return *this; }
 public:
   static const int type_id = LUA_TFUNCTION;
   LuaFunction(lua_State *L, int pos) : LuaObject(L, pos) { }
@@ -125,9 +130,18 @@ public:
 
 class LuaNumber : public LuaObject
 {
+private:
+  LuaNumber(const LuaNumber &other) : LuaObject(NULL, 0) { }
+  LuaNumber &operator=(const LuaNumber &other) { return *this; }
 public:
   static const int type_id = LUA_TNUMBER;
   LuaNumber(lua_State *L, int pos) : LuaObject(L, pos) { }
+  LuaObject &operator=(const double x)
+  {
+    lua_pushnumber(L, x);
+    lua_rawsetp(L, LUA_REGISTRYINDEX, this);
+    return *this;
+  }
   double get_value()
   {
     double ret;
@@ -140,6 +154,9 @@ public:
 
 class LuaTable : public LuaObject
 {
+private:
+  LuaTable(const LuaTable &other) : LuaObject(NULL, 0) { }
+  LuaTable &operator=(const LuaTable &other) { return *this; }
 public:
   static const int type_id = LUA_TTABLE;
   LuaTable(lua_State *L, int pos) : LuaObject(L, pos) { }
@@ -159,6 +176,21 @@ public:
     LuaObject *ret = New(L, -1);
     lua_pop(L, 1);
     return ret;
+  }
+  LuaObject &operator[](const double x)
+  {
+    lua_pushnumber(L, x);
+    const LuaNumber *key = New<LuaNumber>(L, -1);
+    return this->operator[](key);
+  }
+  LuaObject &operator[](const LuaObject *key)
+  {
+    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
+    lua_rawgetp(L, LUA_REGISTRYINDEX, key);
+    lua_gettable(L, -2);
+    LuaObject *ret = New(L, -1);
+    lua_pop(L, 1);
+    return *ret;
   }
 } ;
 
@@ -188,7 +220,6 @@ LuaObject *LuaObject::New(lua_State *L, int pos)
     return new LuaTable(L, pos);
   }
   else {
-    printf("it's something else!\n");
     return new LuaObject(L, pos);
   }
 }
@@ -224,10 +255,7 @@ int getfunc(lua_State *L)
 }
 int setfunc(lua_State *L)
 {
-  thefunc = dynamic_cast<LuaFunction*>(LuaObject::New(L, 1));
-  if (!thefunc) {
-    luaL_error(L, "object must be a function");
-  }
+  thefunc = LuaObject::New<LuaFunction>(L, 1);
   return 0;
 }
 int callfunc(lua_State *L)
@@ -250,15 +278,13 @@ int getnumber(lua_State *L)
   else {
     val = 0.0;
   }
+
   lua_pushnumber(L, val);
   return 1;
 }
 int setnumber(lua_State *L)
 {
-  thenumber = dynamic_cast<LuaNumber*>(LuaObject::New(L, 1));
-  if (!thenumber) {
-    luaL_error(L, "object must be a number");
-  }
+  thenumber = LuaObject::New<LuaNumber>(L, 1);
   return 0;
 }
 
@@ -274,10 +300,7 @@ int gettable(lua_State *L)
 }
 int settable(lua_State *L)
 {
-  thetable = dynamic_cast<LuaTable*>(LuaObject::New(L, 1));
-  if (!thetable) {
-    luaL_error(L, "object must be a table");
-  }
+  thetable = LuaObject::New<LuaTable>(L, 1);
   return 0;
 }
 

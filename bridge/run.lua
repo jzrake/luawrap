@@ -10,7 +10,6 @@ local LuaObject = Registry["__LuaObject_REGISTRY"]
 bridge.setfunc(thefunc)
 bridge.settable(thetable)
 bridge.setnumber(thenumber)
-bridge.setnumber(thenumber)
 
 assert(bridge.callfunc() == "in the func!")
 assert(bridge.getnumber() == 10.0)
