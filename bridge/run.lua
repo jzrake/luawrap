@@ -21,7 +21,11 @@ assert(type(LuaObject[thefunc] == "userdata"))
 assert(type(LuaObject[thetable] == "userdata"))
 assert(type(LuaObject[thenumber] == "userdata"))
 
+bridge.setitem(thetable, thenumber, thefunc)
+assert(thetable[thenumber] == thefunc)
+assert(bridge.getitem(thetable, thenumber) == thefunc)
+
+--print(bridge.getitem(thetable, thenumber))
 --for k,v in pairs(Registry) do print(k,v) end
---print(LuaObject[thenumber])
 
 print "all test passed"

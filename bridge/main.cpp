@@ -61,6 +61,10 @@ public:
   }
   LuaObject(lua_State *L, int pos) : L(L)
   {
+    if (lua_type(L, pos) == LUA_TNIL) {
+      luaL_error(L, "TypeError: cannot wrap Lua type nil");
+    }
+
     lua_pushvalue(L, pos);
     lua_rawsetp(L, LUA_REGISTRYINDEX, this);
     lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_REGISTRY);
@@ -96,6 +100,7 @@ public:
     return t;
   }
   static LuaObject *New(lua_State *L, int pos);
+  template<class T> static T *New(lua_State *L, int pos);
   static int __gc(lua_State *L)
   {
     LuaObject *self = *static_cast<LuaObject**>(lua_touserdata(L, -1));
@@ -107,6 +112,7 @@ public:
 class LuaFunction : public LuaObject
 {
 public:
+  static const int type_id = LUA_TFUNCTION;
   LuaFunction(lua_State *L, int pos) : LuaObject(L, pos) { }
   int call()
   {
@@ -120,6 +126,7 @@ public:
 class LuaNumber : public LuaObject
 {
 public:
+  static const int type_id = LUA_TNUMBER;
   LuaNumber(lua_State *L, int pos) : LuaObject(L, pos) { }
   double get_value()
   {
@@ -134,6 +141,7 @@ public:
 class LuaTable : public LuaObject
 {
 public:
+  static const int type_id = LUA_TTABLE;
   LuaTable(lua_State *L, int pos) : LuaObject(L, pos) { }
   void set(LuaObject *key, LuaObject *val)
   {
@@ -142,6 +150,15 @@ public:
     lua_rawgetp(L, LUA_REGISTRYINDEX, val);
     lua_settable(L, -3);
     lua_pop(L, 1);
+  }
+  LuaObject *get(LuaObject *key)
+  {
+    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
+    lua_rawgetp(L, LUA_REGISTRYINDEX, key);
+    lua_gettable(L, -2);
+    LuaObject *ret = New(L, -1);
+    lua_pop(L, 1);
+    return ret;
   }
 } ;
 
@@ -171,14 +188,40 @@ LuaObject *LuaObject::New(lua_State *L, int pos)
     return new LuaTable(L, pos);
   }
   else {
+    printf("it's something else!\n");
     return new LuaObject(L, pos);
   }
+}
+
+template <class T> T *LuaObject::New(lua_State *L, int pos)
+{
+  LuaObject *obj = LuaObject::New(L, pos);
+  int type_need = T::type_id;
+  int type_have = lua_type(L, pos);
+
+  if (type_need != type_have) {
+    const char *stype_need = lua_typename(L, type_need);
+    const char *stype_have = lua_typename(L, type_have);
+    luaL_error(L, "TypeError: expected %s, got %s\n", stype_need, stype_have);
+  }
+  return dynamic_cast<T*>(obj);
 }
 
 static LuaFunction *thefunc = NULL;
 static LuaNumber *thenumber = NULL;
 static LuaTable *thetable = NULL;
 
+
+int getfunc(lua_State *L)
+{
+  if (thefunc != NULL) {
+    thefunc->push();
+  }
+  else {
+    lua_pushnil(L);
+  }
+  return 1;
+}
 int setfunc(lua_State *L)
 {
   thefunc = dynamic_cast<LuaFunction*>(LuaObject::New(L, 1));
@@ -197,14 +240,7 @@ int callfunc(lua_State *L)
   }
 }
 
-int setnumber(lua_State *L)
-{
-  thenumber = dynamic_cast<LuaNumber*>(LuaObject::New(L, 1));
-  if (!thenumber) {
-    luaL_error(L, "object must be a number");
-  }
-  return 0;
-}
+
 int getnumber(lua_State *L)
 {
   double val;
@@ -217,15 +253,15 @@ int getnumber(lua_State *L)
   lua_pushnumber(L, val);
   return 1;
 }
-
-int settable(lua_State *L)
+int setnumber(lua_State *L)
 {
-  thetable = dynamic_cast<LuaTable*>(LuaObject::New(L, 1));
-  if (!thetable) {
-    luaL_error(L, "object must be a table");
+  thenumber = dynamic_cast<LuaNumber*>(LuaObject::New(L, 1));
+  if (!thenumber) {
+    luaL_error(L, "object must be a number");
   }
   return 0;
 }
+
 int gettable(lua_State *L)
 {
   if (thetable != NULL) {
@@ -236,6 +272,31 @@ int gettable(lua_State *L)
   }
   return 1;
 }
+int settable(lua_State *L)
+{
+  thetable = dynamic_cast<LuaTable*>(LuaObject::New(L, 1));
+  if (!thetable) {
+    luaL_error(L, "object must be a table");
+  }
+  return 0;
+}
+
+int getitem(lua_State *L)
+{
+  LuaTable *table = LuaObject::New<LuaTable>(L, 1);
+  LuaObject *key = LuaObject::New(L, 2);
+  LuaObject *val = table->get(key);
+  val->push();
+  return 1;
+}
+int setitem(lua_State *L)
+{
+  LuaTable *table = LuaObject::New<LuaTable>(L, 1);
+  LuaObject *key = LuaObject::New(L, 2);
+  LuaObject *val = LuaObject::New(L, 3);
+  table->set(key, val);
+  return 0;
+}
 
 int main(int argc, char **argv)
 {
@@ -243,12 +304,15 @@ int main(int argc, char **argv)
   lua_State *L = luaL_newstate();
   luaL_openlibs(L);
   LuaObject::Init(L);
-  luaL_Reg bridge[] = {{"setfunc", setfunc},
+  luaL_Reg bridge[] = {{"getfunc", getfunc},
+                       {"setfunc", setfunc},
                        {"callfunc", callfunc},
-                       {"setnumber", setnumber},
                        {"getnumber", getnumber},
-                       {"settable", settable},
+                       {"setnumber", setnumber},
                        {"gettable", gettable},
+                       {"settable", settable},
+                       {"getitem", getitem},
+                       {"setitem", setitem},
                        {NULL, NULL}};
   lua_getglobal(L, "package");
   lua_getfield(L, -1, "loaded");
