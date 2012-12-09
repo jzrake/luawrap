@@ -8,16 +8,22 @@ local Registry = debug.getregistry()
 local Cpp2Lua = Registry["__LuaObject_CPP2LUA"] -- forward registry
 local Lua2Cpp = Registry["__LuaObject_LUA2CPP"] -- reverse registry
 
+local function TableSize(t)
+   local n=0
+   for k,v in pairs(t) do n = n + 1 end
+   return n
+end
+
+local function TablePrint(t)
+   for k,v in pairs(t) do print(k,v) end
+end
+
 assert(getmetatable(Cpp2Lua).__mode == "kv") -- make sure weak tables/values
 assert(getmetatable(Lua2Cpp).__mode == "kv")
-assert(type(Lua2Cpp[Registry["__LuaObject_NONE"]]) == "userdata")
 
 bridge.setfunc(thefunc)
 bridge.settable(thetable)
 bridge.setnumber(thenumber)
-
---for k,v in pairs(Cpp2Lua) do print(k,v) end
---for k,v in pairs(Lua2Cpp) do print(k,v) end
 
 assert(bridge.callfunc() == "in the func!")
 assert(bridge.getnumber() == 10.0)
@@ -31,6 +37,23 @@ bridge.setitem(thetable, thenumber, thefunc)
 assert(thetable[thenumber] == thefunc)
 assert(bridge.getitem(thetable, thenumber) == thefunc)
 
---bridge.testtable(thetable)
+--TablePrint(thetable)
+--TablePrint(Lua2Cpp)
+
+assert(TableSize(Lua2Cpp) == 3)
+
+local thefunc = nil
+local thetable = nil
+local thenumber = nil
+
+collectgarbage()
+assert(TableSize(Lua2Cpp) == 0)
 
 print "all test passed"
+
+
+
+
+--bridge.testtable(thetable)
+--for k,v in pairs(Cpp2Lua) do print(k,v) end
+--for k,v in pairs(Lua2Cpp) do print(k,v) end

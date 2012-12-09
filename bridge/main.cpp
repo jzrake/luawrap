@@ -25,7 +25,6 @@ std::string demangle(const char *mname)
 #define LuaObject_LUA2CPP    "__LuaObject_LUA2CPP"
 #define LuaObject_CPP2LUA    "__LuaObject_CPP2LUA"
 #define LuaObject_METATABLE  "__LuaObject_METATABLE"
-#define LuaObject_NONE       "__LuaObject_NONE"
 
 
 /*
@@ -70,10 +69,9 @@ std::string demangle(const char *mname)
  * (LUA2CPP) associates the pure Lua object with the C++ LuaObject fulluserdata,
  * and also maintains both weak keys and values.
  *
- * The None object needs to be kept in the LUA_REGISTRYINDEX in order not to be
- * collected. Newly created C++ instances wrapping pure Lua objects need to be
- * kept on the stack until they are assigned to some other table, otherwise they
- * are subject to garbage collection.
+ * Newly created C++ instances wrapping pure Lua objects need to be kept on the
+ * stack until they are assigned to some other table, otherwise they are subject
+ * to garbage collection.
  *
  */
 
@@ -104,15 +102,12 @@ public:
     lua_pushcfunction(L, __gc);
     lua_setfield(L, -2, "__gc");
     lua_pop(L, 1); // stack now empty
-
-    lua_pushlightuserdata(L, NULL);
-    new LuaObject(L, -1); // create the None C++ instance
-    lua_setfield(L, LUA_REGISTRYINDEX, LuaObject_NONE);
   }
   LuaObject(lua_State *L, int pos) : L(L)
   {
-    if (lua_type(L, pos) == LUA_TNIL) {
-      lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_NONE);
+    int isnil = (lua_type(L, pos) == LUA_TNIL);
+    if (isnil) {
+      lua_pushlightuserdata(L, NULL);
     }
     else {
       lua_pushvalue(L, pos);
@@ -123,8 +118,14 @@ public:
     lua_rawsetp(L, -2, this); // pops the pure Lua object
     lua_pop(L, 1); // remove the LuaObject_CPP2LUA table: (+1, pure Lua value)
 
+
     lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_LUA2CPP);
-    lua_pushvalue(L, -2); // pushes the pure Lua object: key
+    if (isnil) {
+      lua_pushlightuserdata(L, NULL); // nil cannot be used as an index
+    }
+    else {
+      lua_pushvalue(L, -2); // pushes the pure Lua object: key
+    }
     *((LuaObject**) lua_newuserdata(L, sizeof(LuaObject*))) = this;
     luaL_setmetatable(L, LuaObject_METATABLE); // does not change stack
     lua_settable(L, -3);
