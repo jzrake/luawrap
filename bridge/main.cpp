@@ -91,11 +91,7 @@ public:
     lua_settable(L, -3);
     lua_pop(L, 1);
   }
-  virtual ~LuaObject()
-  {
-    lua_pushnil(L);
-    lua_rawsetp(L, LUA_REGISTRYINDEX, this);
-  }
+  virtual ~LuaObject() { }
 
   void push()
   {
