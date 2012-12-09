@@ -22,23 +22,58 @@ std::string demangle(const char *mname)
 #endif // __GNUC__
 
 
-#define LuaObject_REGISTRY   "__LuaObject_REGISTRY"
+#define LuaObject_LUA2CPP    "__LuaObject_LUA2CPP"
+#define LuaObject_CPP2LUA    "__LuaObject_CPP2LUA"
 #define LuaObject_METATABLE  "__LuaObject_METATABLE"
 #define LuaObject_NONE       "__LuaObject_NONE"
 
 
 /*
  *
- *   LuaObject_REGISTRY = { [pure Lua object]: C++ LuaObject[lightuserdata] }
+ * Forward registry:
+ * -----------------
+ * LuaObject_CPP2LUA  = { C++ LuaObject[lightuserdata]: [pure Lua object] }
  *
- * + has weak values
- * + used to check for an existing LuaObject associated to the pure Lua object
+ * [+] used to push the pure Lua object onto the stack, given its C++ wrapper
+ *
+ * [+] only one C++ LuaObject per pure Lua object, ensured by LuaObject::New
  *
  *
- *   LUA_REGISTRYINDEX = { C++ LuaObject[lightuserdata]: [pure Lua object] }
+ * Reverse registry:
+ * -----------------
+ * LuaObject_LUA2CPP = { [pure Lua object]: C++ LuaObject[fulluserdata] }
  *
- * + used to push the pure Lua object onto the stack, given its C++ wrapper
- * + only one C++ LuaObject per pure Lua object, ensured by LuaObject::New
+ * [+] has weak keys and values
+ *
+ * [+] used to check for an existing LuaObject associated to the pure Lua object
+ *
+ *
+ *
+ * There are 3 objects going around:
+ *
+ * 1. pure Lua object: the primary lifeline of the other two
+ * 2. C++ LuaObject instance pointer: a lightuserdata
+ * 3. C++ LuaObject fulluserdata: controls deletion of (2) through its metatable
+ *
+ *
+ * The primary object is the pure Lua object, which must be held in an external
+ * table or somewhere on the stack in order not to be collected. The forward
+ * registry (CPP2LUA) associates the C++ LuaObject instance pointer (as a
+ * lightuserdata) with the pure Lua object. The forward registry has both weak
+ * keys and values, so that the C++ LuaObject instance pointer (the key) will be
+ * collected along with the pure Lua object, as soon as all outside references
+ * to the pure Lua object vanish.
+ *
+ * The C++ instance is secondary, and is never a strong key in any table.
+ * Instead, it will be kept alive only as long as its associated pure Lua object
+ * is referenced from an outside table or the stack. The reverse registry
+ * (LUA2CPP) associates the pure Lua object with the C++ LuaObject fulluserdata,
+ * and also maintains both weak keys and values.
+ *
+ * The None object needs to be kept in the LUA_REGISTRYINDEX in order not to be
+ * collected. Newly created C++ instances wrapping pure Lua objects need to be
+ * kept on the stack until they are assigned to some other table, otherwise they
+ * are subject to garbage collection.
  *
  */
 
@@ -51,12 +86,19 @@ private:
 public:
   static void Init(lua_State *L)
   {
-    lua_newtable(L); // create the LuaObject_REGISTRY
+    lua_newtable(L); // create the LuaObject_CPP2LUA
     lua_newtable(L); // create its metatable
-    lua_pushstring(L, "v"); // LuaObject_REGISTRY needs weak values:
-    lua_setfield(L, -2, "__mode"); // meta(LuaObject_REGISTRY)[__mode] = "v"
-    lua_setmetatable(L, -2); // assign to the LuaObject_REGISTRY's metatable
-    lua_setfield(L, LUA_REGISTRYINDEX, LuaObject_REGISTRY); // stack now empty
+    lua_pushstring(L, "kv"); // LuaObject_CPP2LUA needs weak keys and values:
+    lua_setfield(L, -2, "__mode"); // meta(LuaObject_CPP2LUA)[__mode] = "kv"
+    lua_setmetatable(L, -2); // assign to the LuaObject_CPP2LUA's metatable
+    lua_setfield(L, LUA_REGISTRYINDEX, LuaObject_CPP2LUA); // stack now empty
+
+    lua_newtable(L); // create the LuaObject_LUA2CPP
+    lua_newtable(L); // create its metatable
+    lua_pushstring(L, "kv"); // LuaObject_LUA2CPP needs weak keys and values:
+    lua_setfield(L, -2, "__mode"); // meta(LuaObject_LUA2CPP)[__mode] = "kv"
+    lua_setmetatable(L, -2); // assign to the LuaObject_LUA2CPP's metatable
+    lua_setfield(L, LUA_REGISTRYINDEX, LuaObject_LUA2CPP); // stack now empty
 
     luaL_newmetatable(L, LuaObject_METATABLE);
     lua_pushcfunction(L, __gc);
@@ -64,42 +106,43 @@ public:
     lua_pop(L, 1); // stack now empty
 
     lua_pushlightuserdata(L, NULL);
+    new LuaObject(L, -1); // create the None C++ instance
     lua_setfield(L, LUA_REGISTRYINDEX, LuaObject_NONE);
   }
   LuaObject(lua_State *L, int pos) : L(L)
   {
     if (lua_type(L, pos) == LUA_TNIL) {
-      lua_pop(L, 1);
       lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_NONE);
     }
+    else {
+      lua_pushvalue(L, pos);
+    }
 
-    lua_pushvalue(L, pos);
-    lua_rawsetp(L, LUA_REGISTRYINDEX, this);
-    lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_REGISTRY);
-    lua_rawgetp(L, LUA_REGISTRYINDEX, this); // Lua object is the key
-    lua_pushlightuserdata(L, this);
+    lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_CPP2LUA);
+    lua_pushvalue(L, -2); // pushes the pure Lua object
+    lua_rawsetp(L, -2, this); // pops the pure Lua object
+    lua_pop(L, 1); // remove the LuaObject_CPP2LUA table: (+1, pure Lua value)
+
+    lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_LUA2CPP);
+    lua_pushvalue(L, -2); // pushes the pure Lua object: key
+    *((LuaObject**) lua_newuserdata(L, sizeof(LuaObject*))) = this;
     luaL_setmetatable(L, LuaObject_METATABLE); // does not change stack
-
-    /*
-     * stack order is:
-     *
-     * LuaObject_REGISTRY
-     * Lua object wrapped by this object
-     * new userdata
-     */
-
     lua_settable(L, -3);
-    lua_pop(L, 1);
+    lua_pop(L, 1); // remove the LuaObject_LUA2CPP table: (+1, pure Lua value)
+
+    lua_pop(L, 1); // remove the pure Lua value: clean stack
   }
   virtual ~LuaObject() { }
 
   void push()
   {
-    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
+    lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_CPP2LUA);
+    lua_rawgetp(L, -1, this);
+    lua_remove(L, -2);
   }
   int type()
   {
-    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
+    this->push();
     int t = lua_type(L, -1);
     lua_pop(L, 1);
     return t;
@@ -108,7 +151,7 @@ public:
   template<class T> static T *New(lua_State *L, int pos);
   static int __gc(lua_State *L)
   {
-    LuaObject *self = static_cast<LuaObject*>(lua_touserdata(L, -1));
+    LuaObject *self = *static_cast<LuaObject**>(lua_touserdata(L, -1));
     delete self;
     return 0;
   }
@@ -116,6 +159,7 @@ public:
 
 class LuaFunction : public LuaObject
 {
+private:
   LuaFunction(const LuaFunction &other) : LuaObject(NULL, 0) { }
   LuaFunction &operator=(const LuaFunction &other) { return *this; }
 public:
@@ -124,7 +168,7 @@ public:
   int call()
   {
     int start = lua_gettop(L);
-    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
+    this->push();
     lua_call(L, 0, LUA_MULTRET);
     return lua_gettop(L) - start;
   }
@@ -147,7 +191,7 @@ public:
   double get_value()
   {
     double ret;
-    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
+    this->push();
     ret = lua_tonumber(L, -1);
     lua_pop(L, 1);
     return ret;
@@ -164,21 +208,22 @@ public:
   LuaTable(lua_State *L, int pos) : LuaObject(L, pos) { }
   void set(LuaObject *key, LuaObject *val)
   {
-    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
-    lua_rawgetp(L, LUA_REGISTRYINDEX, key);
-    lua_rawgetp(L, LUA_REGISTRYINDEX, val);
+    this->push();
+    key->push();
+    val->push();
     lua_settable(L, -3);
     lua_pop(L, 1);
   }
   LuaObject *get(LuaObject *key)
   {
-    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
-    lua_rawgetp(L, LUA_REGISTRYINDEX, key);
+    this->push();
+    key->push();
     lua_gettable(L, -2);
     LuaObject *ret = New(L, -1);
     lua_pop(L, 1);
     return ret;
   }
+  /*
   LuaObject &operator[](const double x)
   {
     lua_rawgetp(L, LUA_REGISTRYINDEX, this);
@@ -197,23 +242,24 @@ public:
     lua_pop(L, 1);
     return *ret;
   }
+  */
 } ;
 
 
 LuaObject *LuaObject::New(lua_State *L, int pos)
 {
   pos = lua_absindex(L, pos);
-  lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_REGISTRY);
+  lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_LUA2CPP);
   lua_pushvalue(L, pos);
   lua_gettable(L, -2);
 
   void *udata = lua_touserdata(L, -1);
   int type = lua_type(L, pos);
 
-  lua_pop(L, 2); // remove LuaObject_REGISTRY and the result of gettable
+  lua_pop(L, 2); // remove LuaObject_LUA2CPP and the result of gettable
 
   if (udata != NULL) {
-    return static_cast<LuaObject*>(udata);
+    return *static_cast<LuaObject**>(udata);
   }
   if (type == LUA_TFUNCTION) {
     return new LuaFunction(L, pos);
@@ -328,10 +374,10 @@ int setitem(lua_State *L)
 
 int testtable(lua_State *L)
 {
-  LuaTable *table = LuaObject::New<LuaTable>(L, 1);
-  lua_newtable(L);
+  //  LuaTable *table = LuaObject::New<LuaTable>(L, 1);
+  //  lua_newtable(L);
   //  LuaTable &subtable = *LuaObject::New<LuaTable>(L, -1);
-  table->operator[](100);
+  //  table->operator[](100);
   return 0;
 }
 
@@ -350,7 +396,7 @@ int main(int argc, char **argv)
                        {"settable", settable},
                        {"getitem", getitem},
                        {"setitem", setitem},
-		       {"testtable", testtable},
+                       {"testtable", testtable},
                        {NULL, NULL}};
   lua_getglobal(L, "package");
   lua_getfield(L, -1, "loaded");
