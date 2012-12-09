@@ -2,10 +2,43 @@
 #include <iostream>
 #include "lua.hpp"
 
+#ifdef __GNUC__
+#include <cstdlib>
+#include <cxxabi.h>
+std::string demangle(const char *mname)
+{
+  static int status;
+  char *realname = abi::__cxa_demangle(mname, 0, 0, &status);
+  std::string ret = realname;
+  free(realname);
+  return ret;
+}
+#else
+std::string demangle(const char *mname)
+{
+  return std::string(mname);
+}
+#endif // __GNUC__
 
 
 #define LuaObject_REGISTRY   "__LuaObject_REGISTRY"
 #define LuaObject_METATABLE  "__LuaObject_METATABLE"
+
+
+/*
+ *
+ *   LuaObject_REGISTRY = { [pure Lua object]: C++ LuaObject[fulluserdata] }
+ *
+ * + has weak values
+ * + used to check for an existing LuaObject associated to the pure Lua object
+ *
+ *
+ *   LUA_REGISTRYINDEX = { C++ LuaObject[lightuserdata]: [pure Lua object] }
+ *
+ * + used to push the pure Lua object onto the stack, given its C++ wrapper
+ * + only one C++ LuaObject per pure Lua object, ensured by LuaObject::New
+ *
+ */
 
 class LuaObject
 {
@@ -32,9 +65,7 @@ public:
     lua_rawsetp(L, LUA_REGISTRYINDEX, this);
     lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_REGISTRY);
     lua_rawgetp(L, LUA_REGISTRYINDEX, this); // Lua object is the key
-
-    LuaObject **place = (LuaObject**) lua_newuserdata(L, sizeof(LuaObject*));
-    *place = this;
+    *((LuaObject**) lua_newuserdata(L, sizeof(LuaObject*))) = this;
     luaL_setmetatable(L, LuaObject_METATABLE); // does not change stack
 
     /*
@@ -51,16 +82,24 @@ public:
   virtual ~LuaObject()
   {
     lua_pushnil(L);
-    lua_rawsetp(L, LUA_REGISTRYINDEX, this);    
+    lua_rawsetp(L, LUA_REGISTRYINDEX, this);
   }
   void push()
   {
     lua_rawgetp(L, LUA_REGISTRYINDEX, this);
   }
+  int type()
+  {
+    lua_rawgetp(L, LUA_REGISTRYINDEX, this);
+    int t = lua_type(L, -1);
+    lua_pop(L, 1);
+    return t;
+  }
   static LuaObject *New(lua_State *L, int pos);
   static int __gc(lua_State *L)
   {
-    std::cout << "garbage collecting!" << std::endl;
+    LuaObject *self = *static_cast<LuaObject**>(lua_touserdata(L, -1));
+    delete self;
     return 0;
   }
 } ;
@@ -109,7 +148,19 @@ public:
 
 LuaObject *LuaObject::New(lua_State *L, int pos)
 {
+  pos = lua_absindex(L, pos);
+  lua_getfield(L, LUA_REGISTRYINDEX, LuaObject_REGISTRY);
+  lua_pushvalue(L, pos);
+  lua_gettable(L, -2);
+
+  void *udata = lua_touserdata(L, -1);
   int type = lua_type(L, pos);
+
+  lua_pop(L, 2); // remove LuaObject_REGISTRY and the result of gettable
+
+  if (udata != NULL) {
+    return *static_cast<LuaObject**>(udata);
+  }
   if (type == LUA_TFUNCTION) {
     return new LuaFunction(L, pos);
   }
@@ -130,12 +181,9 @@ static LuaTable *thetable = NULL;
 
 int setfunc(lua_State *L)
 {
-  if (thefunc != NULL) {
-    delete thefunc;
-  }
   thefunc = dynamic_cast<LuaFunction*>(LuaObject::New(L, 1));
   if (!thefunc) {
-    luaL_error(L, "object is must be a function");
+    luaL_error(L, "object must be a function");
   }
   return 0;
 }
@@ -148,24 +196,12 @@ int callfunc(lua_State *L)
     return 0;
   }
 }
-int delfunc(lua_State *L)
-{
-  if (thefunc != NULL) {
-    delete thefunc;
-    thefunc = NULL;
-  }
-  return 0;
-}
-
 
 int setnumber(lua_State *L)
 {
-  if (thenumber != NULL) {
-    delete thenumber;
-  }
   thenumber = dynamic_cast<LuaNumber*>(LuaObject::New(L, 1));
   if (!thenumber) {
-    luaL_error(L, "object is must be a number");
+    luaL_error(L, "object must be a number");
   }
   return 0;
 }
@@ -181,26 +217,13 @@ int getnumber(lua_State *L)
   lua_pushnumber(L, val);
   return 1;
 }
-int delnumber(lua_State *L)
-{
-  if (thenumber != NULL) {
-    delete thenumber;
-    thenumber = NULL;
-  }
-  return 0;
-}
-
 
 int settable(lua_State *L)
 {
-  if (thetable != NULL) {
-    delete thetable;
-  }
   thetable = dynamic_cast<LuaTable*>(LuaObject::New(L, 1));
   if (!thetable) {
-    luaL_error(L, "object is must be a table");
+    luaL_error(L, "object must be a table");
   }
-  //  thetable->set(thenumber, thefunc);
   return 0;
 }
 int gettable(lua_State *L)
@@ -213,15 +236,6 @@ int gettable(lua_State *L)
   }
   return 1;
 }
-int deltable(lua_State *L)
-{
-  if (thetable != NULL) {
-    delete thetable;
-    thetable = NULL;
-  }
-  return 0;
-}
-
 
 int main(int argc, char **argv)
 {
@@ -230,15 +244,12 @@ int main(int argc, char **argv)
   luaL_openlibs(L);
   LuaObject::Init(L);
   luaL_Reg bridge[] = {{"setfunc", setfunc},
-		       {"callfunc", callfunc},
-		       {"delfunc", delfunc},
-		       {"setnumber", setnumber},
-		       {"getnumber", getnumber},
-		       {"delnumber", delnumber},
-		       {"settable", settable},
-		       {"gettable", gettable},
-		       {"deltable", deltable},
-		       {NULL, NULL}};
+                       {"callfunc", callfunc},
+                       {"setnumber", setnumber},
+                       {"getnumber", getnumber},
+                       {"settable", settable},
+                       {"gettable", gettable},
+                       {NULL, NULL}};
   lua_getglobal(L, "package");
   lua_getfield(L, -1, "loaded");
   luaL_newlib(L, bridge);
