@@ -14,14 +14,22 @@ s.a = 3.2
 s.b = 2
 s.x = 2.1
 s.y = 2
-
-A.cfg = s
+s.vec.x = 10.0
+s.vec.y = 20.0
+s.vec.z = 30.0
+s.vec.w = 40.0
 
 assert(s.a == 3)
 assert(s.b == 2)
 assert(s.x == 2.1)
 assert(s.y == 2.0)
 
+assert(s.vec.x == 10)
+assert(s.vec.y == 20)
+assert(s.vec.z == 30)
+assert(s.vec.w == 40)
+
+A.cfg = s
 local s = nil
 collectgarbage()
 
@@ -43,4 +51,5 @@ assert(L.p2.y == 4)
 
 
 print "all tests passed!"
+
 
